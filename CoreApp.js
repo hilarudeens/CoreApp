@@ -12,11 +12,10 @@
  * Library which is run on the top of knockout and jQuery. Emulate Backbone like
  * application structure.
  *
- * M-S-VM-R
+ * M-S-V-M-R
  *
  */
-var CoreApp = window.CoreApp || (function() {
-	"use strict";
+var CoreApp = window.CoreApp || (function() {"use strict";
 
 	if (!window.jQuery || !window.ko) {
 		throw new Error('Dependency error, Knockout and jQuery doesn\'t exist');
@@ -26,11 +25,12 @@ var CoreApp = window.CoreApp || (function() {
 
 	// SETUP CONFIGURATION
 	CoreApp.config = {
-		basePath : '/'
+		basePath : '/',
+		DEBUG : true
 	};
 
 	// SETUP GLOBAL
-	CoreApp.global = {};
+	CoreApp.globals = {};
 
 	// BASE CLASS DEFINATION INSPIRED BY
 	/**
@@ -156,6 +156,39 @@ var CoreApp = window.CoreApp || (function() {
 		}
 	});
 
+	// Event trigger function definition
+	var trigger = function(eventName) {
+		var self = this;
+		var args = Array.prototype.slice.call(arguments, 0);
+		args.unshift(self._.eventListeners);
+		CoreApp.Event.trigger.apply(CoreApp.Event.trigger, args);
+	};
+
+	// On function definition
+	var on = function(eventName, callback, context) {
+		var self = this;
+		var eventList = [];
+
+		if (!self._.eventListeners[eventName]) {
+			for (var eventName in self._.eventListeners)
+			eventList.push(eventName);
+			CoreApp.Exception.throwIt("Non standard event attachement, possible events are " + eventList.join(","));
+			return false;
+		}
+
+		if ( typeof callback !== 'function') {
+			CoreApp.Exception.throwIt("Attaching callback to " + eventName + " is not a function");
+			return false;
+		}
+
+		self._.eventListeners[eventName].push({
+			callback : callback,
+			context : context
+		});
+
+		return true;
+	};
+
 	// DEFINE MODEL STRUCTURE
 	var ModelPrototype = {
 		// PRIVATE FUNCTIONS
@@ -187,7 +220,7 @@ var CoreApp = window.CoreApp || (function() {
 			// Trigger event.
 			self._trigger('change', changedModelRef, changedAttrName, changedValue);
 		},
-		// "_trigger" function sould come here.
+		_trigger : trigger,
 		// CONSTRUCTOR FUNCTION
 		init : function(data) {
 			this._super();
@@ -197,7 +230,7 @@ var CoreApp = window.CoreApp || (function() {
 			this._initChangeSubscribe();
 		},
 		// PUBLIC FUNCTIONS
-		// "on" function sould come here.
+		on : on,
 		getJSON : function() {
 			CoreApp.Exception.throwIt("getJSON function is decelered, but not defined");
 		},
@@ -248,7 +281,7 @@ var CoreApp = window.CoreApp || (function() {
 			var self = this;
 			self._.collection = ko.observableArray([]);
 		},
-		// "_trigger" function sould come here.
+		_trigger : trigger,
 		// CONSTRUCTOR FUNCTION
 		init : function() {
 			var self = this;
@@ -257,7 +290,7 @@ var CoreApp = window.CoreApp || (function() {
 			self._factory();
 		},
 		// PUBLIC FUNCTIONS
-		// "on" function sould come here.
+		on : on,
 		addOne : function(dataItem) {
 			var self = this;
 			var model = new self._.model(dataItem);
@@ -336,18 +369,33 @@ var CoreApp = window.CoreApp || (function() {
 		saveDomRef : true,
 		targetDOM : 'body',
 		template : '',
+		modelConfig : {},
 		storeConfig : {},
+		childViewmodelConfig : {
 
+		},
 		// PRIVATE FUNCTIONS
 		_setupEventListeners : function() {
 			var self = this;
 			self._.eventListeners = {
+				modelReady : [],
 				storeReady : [],
 				templateReady : [],
 				beforeRenderTemplate : [],
 				afterRenderTemplate : [],
 				afterViewmodelInit : []
 			}
+		},
+		_initModels : function() {
+			var self = this;
+			var modelConfig = self.modelConfig;
+			var models = {};
+			var TempClass = null;
+			for (var modelAlias in modelConfig) {
+				TempClass = CoreApp.Application.evaluate(modelConfig[modelAlias]);
+				models[modelAlias] = new TempClass();
+			}
+			self._.models = models;
 		},
 		_initStores : function() {
 			var self = this;
@@ -360,13 +408,28 @@ var CoreApp = window.CoreApp || (function() {
 			}
 			self._.stores = stores;
 		},
+		_initChildViewmodels : function() {
+			var self = this;
+			var childVmConfig = self.childViewmodelConfig;
+			var childViewmodels = {};
+			var TempClass = null;
+			for (var childVmAlias in childVmConfig) {
+				TempClass = CoreApp.Application.evaluate(childVmConfig[childVmAlias]);
+				childViewmodels[childVmAlias] = new TempClass();
+				childViewmodels[childVmAlias].getParent = function() {
+
+				}
+			}
+			self._.childViewmodels = childViewmodels;
+		},
 		_templateCompile : function(htmlString) {
-			return $('<div>').html(htmlString).find(">*")[0];
+			return htmlString ? $('<div>').html(htmlString)[0] : $('<div>')[0];
 		},
 		_renderDOMs : function(doms, $animateFn, $delay) {
 			var self = this;
-			$(self.targetDOM).append(doms);
-			if ($animateFn) {
+			var $renderableDoms = $(doms).children()
+			$(self.targetDOM).append($renderableDoms);
+			if ($renderableDoms) {
 				$delay = $delay || 0;
 				$(doms)[$animateFn]($delay);
 			}
@@ -378,78 +441,70 @@ var CoreApp = window.CoreApp || (function() {
 		_factory : function() {
 			CoreApp.Exception.throwIt("ViewModel attribute not initiated, Initiate viewmodel attributes in _factory function.");
 		},
-		// "_trigger" function sould come here.
-		// CONSTRUCTOR FUNCTION
-		init : function() {
+		_refreshTemplate : function(data) {
 			var self = this;
-			self._setupEventListeners();
-			self._initStores();
-			self._factory();
-
-			// Trigger on after init store
-			self._trigger('storeReady', self._.stores);
+			// Clean existing template content
+			$.each(self._.$domRef, function(elemIndex, node) {
+				ko.removeNode(node);
+			});
+			self._initTemplate();
+		},
+		_koApplyBindings : function(data, node) {
+			var self = this;
+			node = node || self._.domRef;
+			ko.applyBindingsToDescendants(data, node);
+		},
+		_initTemplate : function() {
+			var self = this;
+			var deferred = $.Deferred();
 
 			var templateProcess = function(templateString) {
+				var self = this;
 				var doms = self._templateCompile(templateString);
 				if (self.saveDomRef) {
 					self._.domRef = doms;
+					self._.$domRef = $(doms).children();
 				}
 				self._trigger('templateReady', doms);
 				if (self.autoRender) {
 					self._trigger('beforeRenderTemplate', doms);
-					self._renderDOMs(doms);
+					self._renderDOMs(doms, 'fadeIn', 500);
 					self._trigger('afterRenderTemplate', doms);
 				}
+				deferred.resolve(doms);
 			};
-			if (self.template) {
-				self._loadTemplate(self.template).done(templateProcess).always(function() {
-					self._trigger('afterViewmodelInit');
-				});
+
+			if (!self.template) {
+				setTimeout(templateProcess.bind(self), 1);
 			} else {
-				templateProcess('');
-				self._trigger('afterViewmodelInit');
+				self._loadTemplate(self.template).done(templateProcess.bind(self));
 			}
+
+			return deferred;
+		},
+		_trigger : trigger,
+		// CONSTRUCTOR FUNCTION
+		init : function() {
+			var self = this;
+			self._setupEventListeners();
+			self._factory();
+			self._initModels();
+			self._initStores();
+			// Trigger on after init model
+			self._trigger('modelReady', self._.models);
+
+			// Trigger on after init store
+			self._trigger('storeReady', self._.stores);
+
+			self._initTemplate().always(function() {
+				self._initChildViewmodels();
+				self._trigger('afterViewmodelInit');
+			});
+
 		},
 		// PUBLIC FUNCTIONS
-		// "on" function sould come here.
+		on : on
 	};
-
-	// Event trigger function definition
-	var trigger = function(eventName) {
-		var self = this;
-		var args = Array.prototype.slice.call(arguments, 0);
-		args.unshift(self._.eventListeners);
-		CoreApp.Event.trigger.apply(CoreApp.Event.trigger, args);
-	};
-
-	// On function definition
-	var on = function(eventName, callback, context) {
-		var self = this;
-		var eventList = [];
-
-		if (!self._.eventListeners[eventName]) {
-			for (var eventName in self._.eventListeners)
-			eventList.push(eventName);
-			CoreApp.Exception.throwIt("Non standard event attachement, possible events are " + eventList.join(","));
-			return false;
-		}
-
-		if ( typeof callback !== 'function') {
-			CoreApp.Exception.throwIt("Attaching callback to " + eventName + " is not a function");
-			return false;
-		}
-
-		self._.eventListeners[eventName].push({
-			callback : callback,
-			context : context
-		});
-
-		return true;
-	};
-
-	// COMMON FUNCTION OVER PROTOTYPES
-	ModelPrototype._trigger = StorePrototype._trigger = ViewmodelPrototype._trigger = trigger;
-	ModelPrototype.on = StorePrototype.on = ViewmodelPrototype.on = on;
 
 	// EXTEND MODEL, STORE, VIEWMODEL PROTOTYPES FROM BASE CLASS
 	CoreApp.models = CoreApp.models || {};
@@ -461,10 +516,14 @@ var CoreApp = window.CoreApp || (function() {
 
 	// DEFINE PROXY STRUCTURE
 	var ProxyPrototype = {
-		store : {},
-		url : "",
-		getData : function() {
-			throw new Error(" function is not defined ");
+		ajax : function(ajaxOptions) {
+			var self = this;
+			if (!ajaxOptions.url) {
+				CoreApp.Exception.throwIt("Url is not defined");
+				return false;
+			}
+			ajaxOptions.type || (ajaxOptions.type = 'GET');
+			return $.ajax(ajaxOptions);
 		}
 	};
 
@@ -510,19 +569,10 @@ var CoreApp = window.CoreApp || (function() {
 				hashPatt : modified.join('/') + '$'
 			};
 		},
-		_initRoutes : function() {
-			var self = this;
-			self._.routes = {};
-			self._.routeMap = {};
+		_getParent: function(routeRef){
+			
 		},
-		// INITIALIZE ROUTER
-		init : function() {
-			var self = this;
-			self._setupEventListeners();
-			self._initRoutes();
-		},
-		// PUBLIC FUNCTIONS
-		createRoute : function(key, hash, cb, name, parentKey, rootKey) {
+		_createRoute : function(key, hash, cb, name, parentKey, rootKey) {
 			var self = this;
 			var hashParses = self._parseHash(hash);
 
@@ -537,13 +587,79 @@ var CoreApp = window.CoreApp || (function() {
 				cb : cb,
 			}
 		},
-		createRoutes : function(route, key) {
+		_createRoutes : function(route, key) {
 			var self = this;
 			key = key || ('route' + Math.random().toString().split('.')[1]);
-			self.createRoute(key, route.hash, route.cb, route.name, route.parent, route.root);
+			self._createRoute(key, route.hash, route.cb, route.name, route.parent, route.root);
 		},
-		getHierarchy : function() {
+		// INITIALIZE ROUTER
+		_initRoutes : function(routes) {
+			var self = this;
+			self._.routes = {};
+			self._.routeMap = {};
+			for(name in routes)
+				self._createRoutes(routes[name], name)
+		},
+		// _trigger: function(eventName){
+		// var args = Array.prototype.slice.call(arguments,1);
+		// var self = this;
+		// var eventListener = self._.eventListeners[eventName];
+		// eventListener.forEach(function(listener){
+		// listener.callback.call()
+		// })
+		// },
+		beforeRoute : function() {
+			return true;
+		},
+		afterRoute : function() {
+			return true;
+		},
+		completeRoute : function() {
 
+		},
+		// CONSTRUCTOR
+		init : function(routes) {
+			var self = this;
+			self._setupEventListeners();
+			self._initRoutes(routes);
+		},
+		// PUBLIC FUNCTIONS
+		// on: on,
+		getHierarchy : function(hash) {
+			var leafToRoot = []
+			var self = this;
+			var routeMap = self._.routeMap;
+			var routerRef = self.lookup(hash);
+			//rootToleaf.push(routerRef);
+			var _getHierarchy = function(collection,routeMap,ref){
+				collection.push(routeMap[ref])
+				if(routeMap[ref].root === ref){
+					return collection;
+				}else {
+					return _getHierarchy(collection,routeMap,routeMap[ref].parent);
+				}
+			};
+			_getHierarchy(leafToRoot,routeMap,routerRef.ref);
+			return leafToRoot;
+		},
+		getTitleByHash : function(hash) {
+			var self = this;
+			var routerRef = self.lookup(hash);
+			var routeMap = self._.routeMap[routerRef.ref];
+			return routeMap.name || '';
+		},
+		getTitleByRef: function(ref){
+			var self = this;
+			var routeMap = self._.routeMap[ref];
+			return routeMap ? routeMap.name : '';
+		},
+		getHash : function(routerRef) {
+			var self = this;
+			var routeMap = self._.routeMap[routerRef];
+			if (routeMap)
+				return routeMap.hash;
+			else
+				return false
 		},
 		getRoute : function() {
 
@@ -551,18 +667,25 @@ var CoreApp = window.CoreApp || (function() {
 		getAllRoutes : function() {
 
 		},
-		reload : function() {
-
+		reload : function(reloadHash) {
+			var self = this;
+			self.load(reloadHash.replace('#', ''));
 		},
-		redirect : function() {
-
+		redirect : function(redirectHash) {
+			location.hash = redirectHash;
 		},
 		load : function(hash) {
 			var self = this;
 			var routeRef = self.lookup(hash);
 			var routeMap = self._.routeMap[routeRef.ref];
-			routeMap.cb.call(routeRef.params);
 
+			if (self.beforeRoute(hash, routeMap) !== false && location.hash.replace('#', '') === hash && !!routeMap.cb) {
+				routeMap.cb.call(routeRef.params);
+				self.afterRoute(hash, routeMap);
+			}
+
+			if (location.hash.replace('#', '') === hash)
+				self.completeRoute(hash, routeMap);
 		},
 		lookup : function(hash) {
 			var self = this, hashMatch = [], params = {}, datatypePatt = /([a-z]+)(\{(Boolean|Number|String)\})?/i, check = '', parsedHashes = self._.routes;
@@ -613,6 +736,37 @@ var CoreApp = window.CoreApp || (function() {
 	// DEFINE CACHE MANAGER
 	var CachePrototype = {};
 	CoreApp.managers.BaseCache = CoreApp.BaseClass.extend(CachePrototype);
+
+	// DEFINE GLOBAL EVENT MANAGER OR PUBSUB MANAGER
+	var GlobalEventPrototype = {
+		// PRIVATE FUNCTIONS
+		_setupEventListeners : function() {
+			var self = this;
+			self._.eventListeners = {
+			};
+		},
+		// CONSTRUCTOR
+		init : function() {
+			var self = this;
+			self._setupEventListeners();
+		},
+		// PUBLIC FUNCTIONS
+		registerEvent : function(eventNames) {
+			var self = this;
+			if (CoreApp.utils.isString(eventNames))
+				eventNames = eventNames.split(',')
+			eventNames.forEach(function(eventName) {
+				if (!self._.eventListeners[eventName]) {
+					self._.eventListeners[eventName] = [];
+				} else {
+					CoreApp.Exception.throwIt('Event registration failed, because ' + eventName + ' event already exist');
+				}
+			});
+		},
+		trigger : trigger,
+		on : on
+	};
+	CoreApp.managers.BaseGlobalEvent = CoreApp.BaseClass.extend(GlobalEventPrototype);
 
 	// DEFINE TEMPLATE LOAD MANAGER
 	var Template = {
@@ -667,7 +821,8 @@ var CoreApp = window.CoreApp || (function() {
 					throw new Error("call stack")
 				}
 			} catch(e) {
-				!console || !console.log || console.log(e.stack);
+				if (CoreApp.config.DEBUG)
+					!console || !console.log || console.log(e.stack);
 			}
 		}
 	}
@@ -763,13 +918,32 @@ var CoreApp = window.CoreApp || (function() {
 	};
 	CoreApp.moduleToFile = CoreApp.mtof = function(modules) {
 		var files = [];
+		var ensure = []
+
+		var ensureModule = function(modulestring) {
+			var base = window;
+			(modulestring.split('.')).forEach(function(moduleToken, index, self) {
+				// Assume end token is file name and skip object
+				// initialization process.
+				if (index === self.length - 1)
+					return
+
+				if (!base[moduleToken]) {
+					base[moduleToken] = {};
+				}
+				base = base[moduleToken];
+			});
+		};
+
 		var checkLoadedModule = function(module) {
 			return !!CoreApp.evaluate(module)
 		};
+
 		if (CoreApp.utils.isString(modules))
 			modules = modules.split(',')
 
 		modules.forEach(function(module) {
+			ensureModule(module);
 			if (checkLoadedModule(module) === false)
 				files.push(module.split('.').join('/'));
 		});
@@ -792,10 +966,10 @@ var CoreApp = window.CoreApp || (function() {
 			return (prefix || '') + this._.id++;
 		},
 		isArray : function(obj) {
-			return toString.call(obj) === '[object Array]';
+			return Object.prototype.toString.call(obj) === '[object Array]';
 		},
 		isString : function(obj) {
-			return toString.call(obj) === '[object String]';
+			return Object.prototype.toString.call(obj) === '[object String]';
 		}
 	};
 
