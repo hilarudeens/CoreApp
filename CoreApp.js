@@ -261,7 +261,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var self = this;
 			var model = self.model
 			var TempClass = null;
-			TempClass = CoreApp.Application.evaluate(model);
+			TempClass = CoreApp.evaluate(model);
 			self._.model = TempClass;
 		},
 		_initChangeSubscribe : function(model) {
@@ -291,9 +291,14 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		},
 		// PUBLIC FUNCTIONS
 		on : on,
+		getModel : function() {
+			var self = this
+			return self._.model
+		},
 		addOne : function(dataItem) {
 			var self = this;
-			var model = new self._.model(dataItem);
+			var Model = self.getModel();
+			var model = new Model(dataItem);
 			// Register event for model value change
 			// Keep add subscription before add into collection.
 			// Since collection in knockout binding, once the model
@@ -335,7 +340,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		removeAll : function(dataItems, matchKey) {
 			var self = this;
 			var receivedModels = []
-			if (dataItems.length > 0) {
+			if (dataItems && dataItems.length > 0) {
 				dataItems.forEach(function(dataItem) {
 					var match = {
 						key : matchKey,
@@ -392,7 +397,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var models = {};
 			var TempClass = null;
 			for (var modelAlias in modelConfig) {
-				TempClass = CoreApp.Application.evaluate(modelConfig[modelAlias]);
+				TempClass = CoreApp.evaluate(modelConfig[modelAlias]);
 				models[modelAlias] = new TempClass();
 			}
 			self._.models = models;
@@ -403,7 +408,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var stores = {};
 			var TempClass = null;
 			for (var storeAlias in storeConfig) {
-				TempClass = CoreApp.Application.evaluate(storeConfig[storeAlias]);
+				TempClass = CoreApp.evaluate(storeConfig[storeAlias]);
 				stores[storeAlias] = new TempClass();
 			}
 			self._.stores = stores;
@@ -414,7 +419,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var childViewmodels = {};
 			var TempClass = null;
 			for (var childVmAlias in childVmConfig) {
-				TempClass = CoreApp.Application.evaluate(childVmConfig[childVmAlias]);
+				TempClass = CoreApp.evaluate(childVmConfig[childVmAlias]);
 				childViewmodels[childVmAlias] = new TempClass();
 				childViewmodels[childVmAlias].getParent = function() {
 
@@ -436,7 +441,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		},
 		_loadTemplate : function() {
 			var self = this;
-			return CoreApp.Application.loadTemplate(self.template);
+			return CoreApp.managers.Template.load(self.template);
 		},
 		_factory : function() {
 			CoreApp.Exception.throwIt("ViewModel attribute not initiated, Initiate viewmodel attributes in _factory function.");
@@ -503,7 +508,34 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 
 		},
 		// PUBLIC FUNCTIONS
-		on : on
+		on : on,
+		getModel : function(modelName) {
+			var self = this;
+			var model = self._.models[modelName]
+			if (!model) {
+				CoreApp.Exception.throwIt(modelName + ' store doesn\'t exist in current ViewModel');
+				return {};
+			}
+			return model;
+		},
+		getStore : function(storeName) {
+			var self = this;
+			var store = self._.stores[storeName]
+			if (!store) {
+				CoreApp.Exception.throwIt(storeName + ' store doesn\'t exist in current ViewModel');
+				return {};
+			}
+			return store;
+		},
+		getChild : function(viewmodelName) {
+			var self = this;
+			var viewmodel = self._.childViewmodels[viewmodelName]
+			if (!viewmodel) {
+				CoreApp.Exception.throwIt(viewmodelName + ' child viewmodel doesn\'t exist in current ViewModel');
+				return {};
+			}
+			return viewmodel;
+		}
 	};
 
 	// EXTEND MODEL, STORE, VIEWMODEL PROTOTYPES FROM BASE CLASS
@@ -569,8 +601,8 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				hashPatt : modified.join('/') + '$'
 			};
 		},
-		_getParent: function(routeRef){
-			
+		_getParent : function(routeRef) {
+
 		},
 		_createRoute : function(key, hash, cb, name, parentKey, rootKey) {
 			var self = this;
@@ -597,8 +629,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var self = this;
 			self._.routes = {};
 			self._.routeMap = {};
-			for(name in routes)
+			for (name in routes) {
 				self._createRoutes(routes[name], name)
+			}
 		},
 		// _trigger: function(eventName){
 		// var args = Array.prototype.slice.call(arguments,1);
@@ -631,15 +664,15 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var routeMap = self._.routeMap;
 			var routerRef = self.lookup(hash);
 			//rootToleaf.push(routerRef);
-			var _getHierarchy = function(collection,routeMap,ref){
+			var _getHierarchy = function(collection, routeMap, ref) {
 				collection.push(routeMap[ref])
-				if(routeMap[ref].root === ref){
+				if (routeMap[ref].root === ref) {
 					return collection;
-				}else {
-					return _getHierarchy(collection,routeMap,routeMap[ref].parent);
+				} else {
+					return _getHierarchy(collection, routeMap, routeMap[ref].parent);
 				}
 			};
-			_getHierarchy(leafToRoot,routeMap,routerRef.ref);
+			_getHierarchy(leafToRoot, routeMap, routerRef.ref);
 			return leafToRoot;
 		},
 		getTitleByHash : function(hash) {
@@ -648,7 +681,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var routeMap = self._.routeMap[routerRef.ref];
 			return routeMap.name || '';
 		},
-		getTitleByRef: function(ref){
+		getTitleByRef : function(ref) {
 			var self = this;
 			var routeMap = self._.routeMap[ref];
 			return routeMap ? routeMap.name : '';
@@ -771,9 +804,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	// DEFINE TEMPLATE LOAD MANAGER
 	var Template = {
 		config : {
-			holder : '',
 			pathPrefix : 'templates/',
 			extension : 'html'
+			namePrefix : ''
 		},
 		load : function(template) {
 			var basePath = CoreApp.config.basePath;
@@ -784,7 +817,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var templateName = template;
 			var pathPrefix = config.pathPrefix || '/';
 			var extension = '.' + (config.extension || 'html');
-			var url = basePath + pathPrefix + templateName + extension;
+			var url = basePath + pathPrefix + namePrefix + templateName + extension;
 
 			// Check catched and read from dump
 			if ($('#' + templateName).length) {
