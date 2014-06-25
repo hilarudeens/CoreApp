@@ -805,17 +805,17 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	var Template = {
 		config : {
 			pathPrefix : 'templates/',
-			extension : 'html'
+			extension : 'html',
 			namePrefix : ''
 		},
 		load : function(template) {
-			var basePath = CoreApp.config.basePath;
-			var deferred = $.Deferred();
 			var self = this;
 			var config = self.config;
-
+			var deferred = $.Deferred();
 			var templateName = template;
+			var basePath = config.basePath;
 			var pathPrefix = config.pathPrefix || '/';
+			var namePrefix = config.namePrefix;
 			var extension = '.' + (config.extension || 'html');
 			var url = basePath + pathPrefix + namePrefix + templateName + extension;
 
