@@ -195,8 +195,11 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		_initSubscriptionRegistry : function() {
 			this._.subscriptions = [];
 		},
-		_factory : function(data) {
-			CoreApp.Exception.throwIt("Model attribute not initiated, Initiate model attributes in _factory function.");
+		_initObj : function() {
+			var self = this;
+			var args = Array.prototype.slice.call(arguments, 0)
+			self._.collection = ko.observableArray([]);
+			self.initObj.apply(self, args);
 		},
 		_setupEventListeners : function() {
 			var self = this;
@@ -225,9 +228,12 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		init : function(data) {
 			this._super();
 			this._setupEventListeners();
-			this._factory(data || {});
+			this._initObj(data || {});
 			this._initSubscriptionRegistry();
 			this._initChangeSubscribe();
+		},
+		// CUSTOM OBJECT INITIALIZE FUNCTION
+		initObj : function() {
 		},
 		// PUBLIC FUNCTIONS
 		on : on,
@@ -277,9 +283,11 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				self._trigger.apply(self, args);
 			}, self);
 		},
-		_factory : function() {
+		_initObj : function() {
 			var self = this;
+			var args = Array.prototype.slice.call(arguments, 0)
 			self._.collection = ko.observableArray([]);
+			self.initObj.apply(self, args);
 		},
 		_trigger : trigger,
 		// CONSTRUCTOR FUNCTION
@@ -287,7 +295,10 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var self = this;
 			self._setupEventListeners();
 			self._initModel();
-			self._factory();
+			self._initObj();
+		},
+		// CUSTOM OBJECT INITIALIZE FUNCTION
+		initObj : function() {
 		},
 		// PUBLIC FUNCTIONS
 		on : on,
@@ -430,61 +441,92 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		_templateCompile : function(htmlString) {
 			return htmlString ? $('<div>').html(htmlString)[0] : $('<div>')[0];
 		},
-		_renderDOMs : function(doms, $animateFn, $delay) {
+		_renderDOMs : function($animateFn, $delay) {
 			var self = this;
-			var $renderableDoms = $(doms).children()
+			var $renderableDoms = self._.$domRef
 			$(self.targetDOM).append($renderableDoms);
 			if ($renderableDoms) {
 				$delay = $delay || 0;
-				$(doms)[$animateFn]($delay);
+				$(self.targetDOM)[$animateFn]($delay);
 			}
 		},
 		_loadTemplate : function() {
 			var self = this;
 			return CoreApp.managers.Template.load(self.template);
 		},
-		_factory : function() {
-			CoreApp.Exception.throwIt("ViewModel attribute not initiated, Initiate viewmodel attributes in _factory function.");
-		},
-		_refreshTemplate : function(data) {
+		_initObj : function() {
 			var self = this;
+			var args = Array.prototype.slice.call(arguments, 0)
+			self.initObj.apply(self, args);
+		},
+		_refreshTemplate : function(renderDOM) {
+			var self = this;
+			var $targetDOM = $(self.targetDOM);
+			renderDOM = renderDOM || true;
+
 			// Clean existing template content
-			$.each(self._.$domRef, function(elemIndex, node) {
-				ko.removeNode(node);
+			if ($targetDOM && $targetDOM.length) {
+
+				// Deattach all jQuery event binding
+				$targetDOM.off()
+
+				$.each($targetDOM.children(), function(elemIndex, node) {
+					// Deattach knockout binding and remove node within target DOM
+					ko.removeNode(node);
+				});
+
+				// Deattach knockout binding at target DOM
+				ko.cleanNode($targetDOM[0]);
+			}
+
+			// Redo template read, compile and render process
+			self._initTemplate().done(function(string) {
+				if (renderDOM)
+					self._renderTemplate(string)
 			});
-			self._initTemplate();
 		},
 		_koApplyBindings : function(data, node) {
 			var self = this;
 			node = node || self._.domRef;
 			ko.applyBindingsToDescendants(data, node);
 		},
+		_templateProcess : function(templateString) {
+			var self = this;
+			var doms = self._templateCompile(templateString);
+			if (self.saveDomRef) {
+				self._.domRef = doms;
+				self._.$domRef = $(doms).children();
+			}
+			self._trigger('templateReady', doms);
+		},
+		_renderTemplate : function(htmlString) {
+			var self = this
+			self._templateProcess(htmlString)
+			self._trigger('beforeRenderTemplate');
+			self._renderDOMs('fadeIn', 500);
+			self._trigger('afterRenderTemplate');
+		},
 		_initTemplate : function() {
 			var self = this;
 			var deferred = $.Deferred();
-
-			var templateProcess = function(templateString) {
-				var self = this;
-				var doms = self._templateCompile(templateString);
-				if (self.saveDomRef) {
-					self._.domRef = doms;
-					self._.$domRef = $(doms).children();
-				}
-				self._trigger('templateReady', doms);
-				if (self.autoRender) {
-					self._trigger('beforeRenderTemplate', doms);
-					self._renderDOMs(doms, 'fadeIn', 500);
-					self._trigger('afterRenderTemplate', doms);
-				}
-				deferred.resolve(doms);
-			};
-
 			if (!self.template) {
-				setTimeout(templateProcess.bind(self), 1);
+				setTimeout( function() {
+					var self = this;
+					var htmlString = ''
+					if (self.autoRender)
+						self._renderTemplate(htmlString)
+					deferred.resolve(htmlString);
+				}.bind(self), 1);
 			} else {
-				self._loadTemplate(self.template).done(templateProcess.bind(self));
+				self._loadTemplate(self.template).done( function(htmlString) {
+					var self = this;
+					if (self.autoRender)
+						self._renderTemplate(htmlString)
+					deferred.resolve(htmlString);
+				}.bind(self)).fail(function() {
+					deferred.reject('');
+				});
 			}
-
 			return deferred;
 		},
 		_trigger : trigger,
@@ -492,7 +534,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		init : function() {
 			var self = this;
 			self._setupEventListeners();
-			self._factory();
+			self._initObj();
 			self._initModels();
 			self._initStores();
 			// Trigger on after init model
@@ -506,6 +548,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				self._trigger('afterViewmodelInit');
 			});
 
+		},
+		// CUSTOM OBJECT INITIALIZE FUNCTION
+		initObj : function() {
 		},
 		// PUBLIC FUNCTIONS
 		on : on,
@@ -527,11 +572,11 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			return store;
 		},
-		getChild : function(viewmodelName) {
+		getComponent: function(viewmodelName) {
 			var self = this;
 			var viewmodel = self._.childViewmodels[viewmodelName]
 			if (!viewmodel) {
-				CoreApp.Exception.throwIt(viewmodelName + ' child viewmodel doesn\'t exist in current ViewModel');
+				CoreApp.Exception.throwIt(viewmodelName + ' child component viewmodel doesn\'t exist in current ViewModel');
 				return {};
 			}
 			return viewmodel;
