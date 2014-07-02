@@ -387,9 +387,40 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		template : '',
 		modelConfig : {},
 		storeConfig : {},
-		childViewmodelConfig : {
+		childViewmodelConfig : {},
 
+		// CONSTRUCTOR FUNCTION
+		init : function($parentRef) {
+			var self = this;
+			self._.$parentRef = $parentRef || $('body');
+			self._setupEventListeners();
+			self._initObj();
+
+			self._initModels();
+			// Trigger on after init model
+			self._trigger('modelReady', self._.models);
+
+			self._initStores();
+			// Trigger on after init store
+			self._trigger('storeReady', self._.stores);
+
+			// Whenever vm object getting initiated we have to make sure
+			// respective template availability. Following function call
+			// check local existance of template and if it is not local dom
+			// it will pull template
+			if (self.template)
+				self._loadTemplate(self.template).always(function(htmlString) {
+					self._initTemplate(htmlString);
+				});
+
+			self._initChildViewmodels();
+			self._trigger('afterViewmodelInit');
 		},
+
+		// CUSTOM OBJECT INITIALIZE FUNCTION
+		initObj : function() {
+		},
+
 		// PRIVATE FUNCTIONS
 		_setupEventListeners : function() {
 			var self = this;
@@ -429,13 +460,12 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var childVmConfig = self.childViewmodelConfig;
 			var childViewmodels = {};
 			var TempClass = null;
+
 			for (var childVmAlias in childVmConfig) {
 				TempClass = CoreApp.evaluate(childVmConfig[childVmAlias]);
-				childViewmodels[childVmAlias] = new TempClass();
-				childViewmodels[childVmAlias].getParent = function() {
-
-				}
+				childViewmodels[childVmAlias] = new TempClass(self._.$domRef);
 			}
+
 			self._.childViewmodels = childViewmodels;
 		},
 		_templateCompile : function(htmlString) {
@@ -443,12 +473,26 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		},
 		_renderDOMs : function($animateFn, $delay) {
 			var self = this;
-			var $renderableDoms = self._.$domRef
-			$(self.targetDOM).append($renderableDoms);
-			if ($renderableDoms) {
-				$delay = $delay || 0;
-				$(self.targetDOM)[$animateFn]($delay);
+
+			var $parentRef = self._.$parentRef
+			var $renderableDoms = self._.$domRef.children()
+			var $ref = $('<div>')
+			if ($parentRef.is($(self.targetDOM))) {
+				$ref = $parentRef;
+			} else {
+				$ref = $($(self.targetDOM), $parentRef)
 			}
+
+			$ref.append($renderableDoms);
+
+			// var $renderableDoms = self._.$domRef.children();
+			// //$(self.targetDOM).
+			// $(self.targetDOM).append($renderableDoms);
+			// if ($renderableDoms) {
+			// $delay = $delay || 0;
+			// $(self.targetDOM)[$animateFn]($delay);
+			// }
+
 		},
 		_loadTemplate : function() {
 			var self = this;
@@ -459,16 +503,16 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var args = Array.prototype.slice.call(arguments, 0)
 			self.initObj.apply(self, args);
 		},
-		_refreshTemplate : function(renderDOM) {
+		// Function to clean rendered DOM properly
+		_cleanDOM : function() {
 			var self = this;
 			var $targetDOM = $(self.targetDOM);
-			renderDOM = renderDOM || true;
 
 			// Clean existing template content
 			if ($targetDOM && $targetDOM.length) {
 
 				// Deattach all jQuery event binding
-				$targetDOM.off()
+				$targetDOM.off();
 
 				$.each($targetDOM.children(), function(elemIndex, node) {
 					// Deattach knockout binding and remove node within target DOM
@@ -479,79 +523,54 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				ko.cleanNode($targetDOM[0]);
 			}
 
+		},
+		_refreshTemplate : function(renderDOM) {
+			var self = this;
+			renderDOM = renderDOM || true;
+			self._cleanDOM();
+
 			// Redo template read, compile and render process
-			self._initTemplate().done(function(string) {
-				if (renderDOM)
-					self._renderTemplate(string)
+			self._loadTemplate(self.template).always(function(htmlString) {
+				self._templateProcess(htmlString);
+				if (!renderDOM)
+					return;
+
+				self._renderTemplate(htmlString);
+
+				// Refresh child templates
+				var childViewmodels = Object.keys(self._.childViewmodels);
+
+				// Render childs Template
+				childViewmodels.forEach( function(key, index) {
+					this[key]._refreshTemplate(renderDOM);
+				}.bind(self._.childViewmodels));
+
 			});
 		},
 		_koApplyBindings : function(data, node) {
 			var self = this;
-			node = node || self._.domRef;
+			node = node || self._.$domRef[0];
 			ko.applyBindingsToDescendants(data, node);
 		},
 		_templateProcess : function(templateString) {
 			var self = this;
 			var doms = self._templateCompile(templateString);
-			if (self.saveDomRef) {
-				self._.domRef = doms;
-				self._.$domRef = $(doms).children();
-			}
-			self._trigger('templateReady', doms);
+			self._.$domRef = $(doms);
+			self._trigger('templateReady');
 		},
-		_renderTemplate : function(htmlString) {
-			var self = this
-			self._templateProcess(htmlString)
+		_renderTemplate : function() {
+			var self = this;
 			self._trigger('beforeRenderTemplate');
 			self._renderDOMs('fadeIn', 500);
 			self._trigger('afterRenderTemplate');
 		},
-		_initTemplate : function() {
+		_initTemplate : function(htmlString) {
 			var self = this;
-			var deferred = $.Deferred();
-			if (!self.template) {
-				setTimeout( function() {
-					var self = this;
-					var htmlString = ''
-					if (self.autoRender)
-						self._renderTemplate(htmlString)
-					deferred.resolve(htmlString);
-				}.bind(self), 1);
-			} else {
-				self._loadTemplate(self.template).done( function(htmlString) {
-					var self = this;
-					if (self.autoRender)
-						self._renderTemplate(htmlString)
-					deferred.resolve(htmlString);
-				}.bind(self)).fail(function() {
-					deferred.reject('');
-				});
-			}
-			return deferred;
+			self._templateProcess(htmlString);
+			if (self.autoRender)
+				self._renderTemplate(htmlString);
 		},
 		_trigger : trigger,
-		// CONSTRUCTOR FUNCTION
-		init : function() {
-			var self = this;
-			self._setupEventListeners();
-			self._initObj();
-			self._initModels();
-			self._initStores();
-			// Trigger on after init model
-			self._trigger('modelReady', self._.models);
-
-			// Trigger on after init store
-			self._trigger('storeReady', self._.stores);
-
-			self._initTemplate().always(function() {
-				self._initChildViewmodels();
-				self._trigger('afterViewmodelInit');
-			});
-
-		},
-		// CUSTOM OBJECT INITIALIZE FUNCTION
-		initObj : function() {
-		},
 		// PUBLIC FUNCTIONS
 		on : on,
 		getModel : function(modelName) {
@@ -572,7 +591,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			return store;
 		},
-		getComponent: function(viewmodelName) {
+		getComponent : function(viewmodelName) {
 			var self = this;
 			var viewmodel = self._.childViewmodels[viewmodelName]
 			if (!viewmodel) {
