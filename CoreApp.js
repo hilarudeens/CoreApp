@@ -473,7 +473,6 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		},
 		_renderDOMs : function($animateFn, $delay) {
 			var self = this;
-
 			var $parentRef = self._.$parentRef
 			var $renderableDoms = self._.$domRef.children()
 			var $ref = $('<div>')
@@ -484,15 +483,6 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 
 			$ref.append($renderableDoms);
-
-			// var $renderableDoms = self._.$domRef.children();
-			// //$(self.targetDOM).
-			// $(self.targetDOM).append($renderableDoms);
-			// if ($renderableDoms) {
-			// $delay = $delay || 0;
-			// $(self.targetDOM)[$animateFn]($delay);
-			// }
-
 		},
 		_loadTemplate : function() {
 			var self = this;
@@ -524,28 +514,33 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 
 		},
-		_refreshTemplate : function(renderDOM) {
+		_refreshTemplate : function(renderCurrentDOM, renderChildComponentDOM) {
 			var self = this;
-			renderDOM = renderDOM || true;
+			renderCurrentDOM = renderCurrentDOM === false ? false : true;
+			renderChildComponentDOM = renderChildComponentDOM === false ? false : true;
 			self._cleanDOM();
 
 			// Redo template read, compile and render process
-			self._loadTemplate(self.template).always(function(htmlString) {
+			self._loadTemplate(self.template).always( function(renderCurrentDOM, renderChildComponentDOM, htmlString) {
+				var self = this;
 				self._templateProcess(htmlString);
-				if (!renderDOM)
+				if (!renderCurrentDOM)
 					return;
 
 				self._renderTemplate(htmlString);
+
+				if (!renderChildComponentDOM)
+					return;
 
 				// Refresh child templates
 				var childViewmodels = Object.keys(self._.childViewmodels);
 
 				// Render childs Template
 				childViewmodels.forEach( function(key, index) {
-					this[key]._refreshTemplate(renderDOM);
+					this[key]._refreshTemplate();
 				}.bind(self._.childViewmodels));
 
-			});
+			}.bind(self, renderCurrentDOM, renderChildComponentDOM));
 		},
 		_koApplyBindings : function(data, node) {
 			var self = this;
