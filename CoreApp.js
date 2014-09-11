@@ -143,20 +143,51 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		return CA._ = {};
 	}(CoreApp));
 
-	CoreApp.clean = function(o) {
-		// Clean the object
-		var dump = o = undefined;
-	};
-
 	// Override basic class definition method and extension.
 	// To keep changes in John Resig's definition private.
 	CoreApp.BaseClass = CoreApp._.Class.extend({
 		// Make constructor function
 		init : function() {
+			this._initObj();
+		},
+		_initObj : function() {
+			var self = this;
+			self.initObj.apply(self, arguments);
+		},
+		initObj : function() {
 		}
 	});
 
-	// Event trigger function definition
+	CoreApp.clean = function(o) {
+		// Clean the object
+		var dump = o = undefined;
+	};
+
+	/**
+	 * Function to stimulate mixins.
+	 *
+	 * @param {Object} destClass
+	 * @param {Object} srcClass
+	 * @param {Boolean} forceOverride
+	 * @param {Array} attributes
+	 */
+	CoreApp.implements = function(destClass, srcClass, forceOverride, attributes) {
+		var sourcePrototypes = srcClass.prototype;
+		var destPrototypes = destClass.prototype;
+		forceOverride = !!forceOverride;
+		attributes = attributes || Object.getOwnPropertyNames(sourcePrototypes);
+		attributes.forEach(function(attr, index) {
+			if (!forceOverride && !!destPrototypes[attr])
+				return;
+			destPrototypes[attr] = sourcePrototypes[attr];
+		});
+	};
+
+	/**
+	 * Function to call callback functions when event is triggered.
+	 *
+	 * @param {String} eventName
+	 */
 	var trigger = function(eventName) {
 		var self = this;
 		var args = Array.prototype.slice.call(arguments, 0);
@@ -164,7 +195,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		CoreApp.Event.trigger.apply(CoreApp.Event.trigger, args);
 	};
 
-	// On function definition
+	/**
+	 * Function to register callback function for an event.
+	 * @param {String} eventName
+	 * @param {Function} callback
+	 * @paran {Object} context Scope object
+	 * @return {Boolean} return registration success status.
+	 */
 	var on = function(eventName, callback, context) {
 		var self = this;
 		var eventList = [];
@@ -191,22 +228,49 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 
 	// DEFINE MODEL STRUCTURE
 	var ModelPrototype = {
-		// PRIVATE FUNCTIONS
-		_initSubscriptionRegistry : function() {
-			this._.subscriptions = [];
+		// MODEL INITIALIZATIONS
+		/**
+		 * Constructor function to initialize Model.
+		 *
+		 * @param {Object} data Plain JSON/JS object.
+		 */
+		init : function(data) {
+			this._super();
+			this._initEventListeners();
+			this._initObj(data || {});
+			this._initSubscriptionRegistry();
+			this._initChangeSubscribe();
 		},
+		/**
+		 * Function to delegate constructor initialize process to outer
+		 * public functions.
+		 */
 		_initObj : function() {
 			var self = this;
 			var args = Array.prototype.slice.call(arguments, 0)
 			self._.collection = ko.observableArray([]);
 			self.initObj.apply(self, args);
 		},
-		_setupEventListeners : function() {
+		/**
+		 * Function to initialize or register standard Model events.
+		 */
+		_initEventListeners : function() {
 			var self = this;
 			self._.eventListeners = {
 				'change' : []
 			};
 		},
+		/**
+		 * Function to initialize register Model observable
+		 * subscription.
+		 */
+		_initSubscriptionRegistry : function() {
+			this._.subscriptions = [];
+		},
+		/**
+		 * Function to initialize observable change event callback
+		 * through knockout subscription method.
+		 */
 		_initChangeSubscribe : function() {
 			var self = this;
 			var subscriptionRef = null;
@@ -217,32 +281,59 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				}
 			}
 		},
+
+		// MODEL CONSTRUCTOR DEFAULT
+		/**
+		 * To make contructor delegated public function "initObj" is an optional
+		 * to application specific Model.
+		 */
+		initObj : function() {
+		},
+
+		// MODEL EVENT HANDLING
+		/**
+		 * Function to cature observable changes.
+		 * @param {String} changedAttrName
+		 * @param {*} Changed value can be Number/String/Boolean/Object
+		 */
 		_change : function(changedAttrName, changedValue) {
 			var self = this;
 			var changedModelRef = this;
 			// Trigger event.
 			self._trigger('change', changedModelRef, changedAttrName, changedValue);
 		},
+		/**
+		 * Function to trigger register Viewmodel and template
+		 * events
+		 */
 		_trigger : trigger,
-		// CONSTRUCTOR FUNCTION
-		init : function(data) {
-			this._super();
-			this._setupEventListeners();
-			this._initObj(data || {});
-			this._initSubscriptionRegistry();
-			this._initChangeSubscribe();
-		},
-		// CUSTOM OBJECT INITIALIZE FUNCTION
-		initObj : function() {
-		},
-		// PUBLIC FUNCTIONS
+		/**
+		 * Function to add or hook callback functions with registered events.
+		 */
 		on : on,
+
+		// MODEL PUBLIC INTERFACE FUNCTIONS
+		/**
+		 * Function to read Model data as JSON value.
+		 * This is need to be implemented based on application
+		 * logic.
+		 */
 		getJSON : function() {
 			CoreApp.Exception.throwIt("getJSON function is decelered, but not defined");
 		},
+		/**
+		 * Function to read Model data as JS object.
+		 * This is need to be implemented based on application
+		 * logic.
+		 */
 		getJS : function() {
 			CoreApp.Exception.throwIt("getJS function is decelered, but not defined");
 		},
+		/**
+		 * Function to read Model attribute value.
+		 * This is need to be implemented based on application
+		 * logic.
+		 */
 		getAttributes : function() {
 			CoreApp.Exception.throwIt("getAttributes function is decelered, but not defined");
 		}
@@ -250,10 +341,32 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 
 	// DEFINE STORE STRUCTURE
 	var StorePrototype = {
-		// PROPERTIES
+		// STORE PROPERTIES
 		model : '',
-		// PRIVATE FUNCTIONS
-		_setupEventListeners : function() {
+		// STORE INITIALIZATIONS
+		/**
+		 * Constructor function to initialize Store.
+		 */
+		init : function() {
+			var self = this;
+			self._initEventListeners();
+			self._initModel();
+			self._initObj();
+		},
+		/**
+		 * Function to delegate constructor initialize process to outer
+		 * public functions.
+		 */
+		_initObj : function() {
+			var self = this;
+			var args = Array.prototype.slice.call(arguments, 0)
+			self._.collection = ko.observableArray([]);
+			self.initObj.apply(self, args);
+		},
+		/**
+		 * Function to initialize or register standard Store events.
+		 */
+		_initEventListeners : function() {
 			var self = this;
 			self._.eventListeners = {
 				addOne : [],
@@ -263,6 +376,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				changeOne : []
 			}
 		},
+		/**
+		 * Function to initialize associated Model.
+		 */
 		_initModel : function() {
 			var self = this;
 			var model = self.model
@@ -270,6 +386,12 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			TempClass = CoreApp.evaluate(model);
 			self._.model = TempClass;
 		},
+		/**
+		 * Function to initialize Model change event listerner to
+		 * capture observable chnages.
+		 *
+		 * @param {Object} model Dynamically created Model object.
+		 */
 		_initChangeSubscribe : function(model) {
 			var self = this;
 			// Subscribe change
@@ -283,29 +405,43 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				self._trigger.apply(self, args);
 			}, self);
 		},
-		_initObj : function() {
-			var self = this;
-			var args = Array.prototype.slice.call(arguments, 0)
-			self._.collection = ko.observableArray([]);
-			self.initObj.apply(self, args);
-		},
-		_trigger : trigger,
-		// CONSTRUCTOR FUNCTION
-		init : function() {
-			var self = this;
-			self._setupEventListeners();
-			self._initModel();
-			self._initObj();
-		},
-		// CUSTOM OBJECT INITIALIZE FUNCTION
+		// STORE CONSTRUCTOR DEFAULT
+		/**
+		 * To make contructor delegated public function "initObj" is an optional
+		 * to application specific Model.
+		 */
 		initObj : function() {
 		},
-		// PUBLIC FUNCTIONS
+
+		// STORE EVENT HANDLING
+		/**
+		 * Function to trigger register Viewmodel and template
+		 * events
+		 */
+		_trigger : trigger,
+		/**
+		 * Function to add or hook callback functions with registered events.
+		 */
 		on : on,
+
+		// STORE PUBLIC INTERFACE FUNCTIONS
+		/**
+		 * Function to fetch reference of associated Model.
+		 *
+		 * @return {Object}
+		 */
 		getModel : function() {
 			var self = this
 			return self._.model
 		},
+
+		/**
+		 * Function to insert single Model object in to
+		 * Store.
+		 *
+		 * @param {Object} dataItem Plain JSON/JS object.
+		 * @return {Object} JS version of added model.
+		 */
 		addOne : function(dataItem) {
 			var self = this;
 			var Model = self.getModel();
@@ -322,6 +458,14 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			self._trigger('addOne', model.getAttributes());
 			return model.getJS();
 		},
+		/**
+		 * Function to remove/delete single Model object from Store.
+		 *
+		 * @param {Object} dataItem
+		 * @praam {Object} match [Optional] Object gives matchable key and respective value.
+		 *
+		 * @return {Object} Removed Model object.
+		 */
 		removeOne : function(dataItem, match) {
 			var self = this;
 			var removable = dataItem;
@@ -338,6 +482,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			self._trigger('removeOne', removedItem);
 			return removedItem;
 		},
+		/**
+		 * Function to insert multiple Model objects in to
+		 * Store.
+		 *
+		 * @param {Array} dataItems Plain JSON/JS object.
+		 * @return {Object} A collection inserted Model's JS version.
+		 */
 		addAll : function(dataItems) {
 			var self = this;
 			var receivedModels = [];
@@ -348,6 +499,14 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			self._trigger('addAll', receivedModels);
 			return receivedModels;
 		},
+		/**
+		 * Function to remove/delete multiple Model objects from Store.
+		 *
+		 * @param {Object} dataItems
+		 * @praam {String} matchKey [Optional] Key to match while delete.
+		 *
+		 * @return {Array} Removed Model objects.
+		 */
 		removeAll : function(dataItems, matchKey) {
 			var self = this;
 			var receivedModels = []
@@ -366,9 +525,18 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			self._trigger('removeAll', receivedModels);
 			return receivedModels;
 		},
-		readOne : function(model) {
-			// Needs to implement if require
+
+		/**
+		 * Function read single model in Store.
+		 */
+		readOne : function(mode) {
+			// TO DO: Needs to implement if require
 		},
+		/**
+		 * Function read multiple Models in Store.
+		 * @param {String} mode Readable mode to iniducated plain JS or Observable.
+		 * @return {Object}
+		 */
 		readAll : function(mode) {
 			// mode can be Observable.
 			mode = mode || 'AS_OBSERVABLE';
@@ -380,21 +548,31 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 
 	// DEFINE VIEWMODELS STRUCTURE
 	var ViewmodelPrototype = {
-		// PROPERTIES
+		// VIEWMODEL PROPERTIES
 		autoRender : true,
-		saveDomRef : true,
-		targetDOM : 'body',
+		targetElem : '',
+		renderAnimation : '', // jQuery render animation
+		renderAnimDelay : 0, // Delay
 		template : '',
 		modelConfig : {},
 		storeConfig : {},
 		childViewmodelConfig : {},
 
-		// CONSTRUCTOR FUNCTION
-		init : function($parentRef) {
+		// VIEWMODEL INITIALIZATIONS
+		/**
+		 * Constructor function to initialize viewmodel.
+		 *
+		 * @param {Object} parentRef level up viewmodel object.
+		 */
+		init : function(parentRef) {
 			var self = this;
-			self._.$parentRef = $parentRef || $('body');
-			self._setupEventListeners();
-			self._initObj();
+			self._.parentRef = parentRef;
+
+			if (self._.parentRef && self.autoRender)
+				self._.parentRef.on('afterRenderTemplate', self._initTemplate, self);
+
+			self._initEventListeners();
+			self._initObj(parentRef);
 
 			self._initModels();
 			// Trigger on after init model
@@ -407,32 +585,28 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			// Whenever vm object getting initiated we have to make sure
 			// respective template availability. Following function call
 			// check local existance of template and if it is not local dom
-			// it will pull template
-			if (self.template)
-				self._loadTemplate(self.template).always(function(htmlString) {
-					self._initTemplate(htmlString);
-				});
-
+			// it will pull template.
+			if (self.template && self.autoRender) {
+				self._initTemplate();
+			} else {
+				self._loadTemplate();
+			}
 			self._initChildViewmodels();
 			self._trigger('afterViewmodelInit');
 		},
-
-		// CUSTOM OBJECT INITIALIZE FUNCTION
-		initObj : function() {
-		},
-
-		// PRIVATE FUNCTIONS
-		_setupEventListeners : function() {
+		/**
+		 * Function to delegate constructor initialize process to outer
+		 * public functions.
+		 *
+		 */
+		_initObj : function() {
 			var self = this;
-			self._.eventListeners = {
-				modelReady : [],
-				storeReady : [],
-				templateReady : [],
-				beforeRenderTemplate : [],
-				afterRenderTemplate : [],
-				afterViewmodelInit : []
-			}
+			var args = Array.prototype.slice.call(arguments, 0)
+			self.initObj.apply(self, args);
 		},
+		/**
+		 * Function to initialize models.
+		 */
 		_initModels : function() {
 			var self = this;
 			var modelConfig = self.modelConfig;
@@ -444,6 +618,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			self._.models = models;
 		},
+		/**
+		 * Function to initialize stores.
+		 */
 		_initStores : function() {
 			var self = this;
 			var storeConfig = self.storeConfig;
@@ -455,6 +632,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			self._.stores = stores;
 		},
+		/**
+		 * Function initialize composite leaf/siblings viewmodels.
+		 */
 		_initChildViewmodels : function() {
 			var self = this;
 			var childVmConfig = self.childViewmodelConfig;
@@ -463,111 +643,215 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 
 			for (var childVmAlias in childVmConfig) {
 				TempClass = CoreApp.evaluate(childVmConfig[childVmAlias]);
-				childViewmodels[childVmAlias] = new TempClass(self._.$domRef);
+				childViewmodels[childVmAlias] = new TempClass(self);
 			}
 
 			self._.childViewmodels = childViewmodels;
 		},
-		_templateCompile : function(htmlString) {
-			return htmlString ? $('<div>').html(htmlString)[0] : $('<div>')[0];
-		},
-		_renderDOMs : function($animateFn, $delay) {
+
+		/**
+		 * Function to initialize or register standard viewmodel event and template
+		 * management events.
+		 */
+		_initEventListeners : function() {
 			var self = this;
-			var $parentRef = self._.$parentRef
-			var $renderableDoms = self._.$domRef.children()
-			var $ref = $('<div>')
-			if ($parentRef.is($(self.targetDOM))) {
-				$ref = $parentRef;
-			} else {
-				$ref = $($(self.targetDOM), $parentRef)
+			self._.eventListeners = {
+				modelReady : [],
+				storeReady : [],
+				templateReady : [],
+				beforeRenderTemplate : [],
+				afterRenderTemplate : [],
+				afterViewmodelInit : []
+			}
+		},
+
+		// VIEWMODEL DEFAULTS
+		/**
+		 * To make contructor delegated public function "initObj" is an optional
+		 * to application specific viewmodel.
+		 */
+		initObj : function() {
+		},
+
+		// VIEWMODEL TEMPLATE PROCESS
+		/**
+		 * Function to read template either from local or remote and
+		 * trigger compile and rendering process.
+		 */
+		_initTemplate : function() {
+			var self = this;
+			var $parentElem = null;
+			$parentElem = self._getParentElem();
+			// Check parent element is there and skip process
+			if (self._.parentRef && $parentElem === null) {
+				// Skip rendering process
+				return;
 			}
 
-			$ref.append($renderableDoms);
+			// 1. Pull template
+			self._loadTemplate().always(function(htmlString) {
+
+				// 2. Check and cleam dom if current template already rendered in dom
+				self._cleanDoms();
+
+				// 3. Compile Template
+				self._templateProcess(htmlString);
+
+				self._trigger('templateReady');
+				self._trigger('beforeRenderTemplate');
+
+				// 4. Render template
+				self._renderTemplate();
+
+				self._trigger('afterRenderTemplate');
+			});
+
 		},
+		/**
+		 * Function to compile template and generate valid
+		 * DOM element.
+		 *
+		 * @param {String} htmlString Html text.
+		 * @return {Object} jQuery DOM elements
+		 */
+		_templateCompile : function(htmlString) {
+			var $elems = htmlString ? $('<div>').html(htmlString) : $('<div>');
+			return $elems.children();
+		},
+		/**
+		 * Function to read parent viewmodel's associated HTML elements.
+		 */
+		_getParentElem : function() {
+			var self = this;
+			var $parentElem = null;
+			if (self._.parentRef) {
+				$parentElem = $(self._.parentRef._.$elems);
+			}
+			return $parentElem
+		},
+		/**
+		 * Function to render the compiled DOM elements in to
+		 * existing "document".
+		 */
+		_renderDoms : function() {
+			var self = this;
+			var $target = null;
+			if (!( $target = self._getParentElem() && $target && $target.length)) {
+				$target = $('body');
+			}
+			if ($target.length) {
+				$target.find(self.targetElem).append(self._.$elems);
+				//$([$target,$target.parent()]).find(self.targetElem).append(self._.$elems);
+				//$target.find('*').addBack().filter(self.targetElem).append(self._.$elems);
+			}
+		},
+		/**
+		 * Function to read template.
+		 *
+		 * @return {Object} jQuery "Promise" object.
+		 */
 		_loadTemplate : function() {
 			var self = this;
 			return CoreApp.managers.Template.load(self.template);
 		},
-		_initObj : function() {
+		/**
+		 * Function to clean rendered DOM properly.
+		 * Cleaing process is include both deattach DOM events
+		 * and remove the elements from "document".
+		 */
+		_cleanDoms : function() {
 			var self = this;
-			var args = Array.prototype.slice.call(arguments, 0)
-			self.initObj.apply(self, args);
-		},
-		// Function to clean rendered DOM properly
-		_cleanDOM : function() {
-			var self = this;
-			var $targetDOM = $(self.targetDOM);
+			var $elems = self._.$elems;
+			var ref = null;
+
 
 			// Clean existing template content
-			if ($targetDOM && $targetDOM.length) {
+			if ($elems && $elems.length) {
+				// /////////////////////////////////////////////
+				// For performance tune following cleanup code, replace with 
+				// native javascript remove() function
+				// /////////////////////////////////////////////
+				
+				// // Deattach all jQuery event binding
+				// $elems.off();
+				// 
+				// $.each($elems, function(elemIndex, node) {
+				// 	// Deattach knockout binding and remove node within target DOM
+				// 	ko.removeNode(node);
+				// });
+				// 
+				// // Deattach knockout binding at target DOM
+				// ko.cleanNode($elems[0]);
 
-				// Deattach all jQuery event binding
-				$targetDOM.off();
-
-				$.each($targetDOM.children(), function(elemIndex, node) {
-					// Deattach knockout binding and remove node within target DOM
-					ko.removeNode(node);
-				});
-
-				// Deattach knockout binding at target DOM
-				ko.cleanNode($targetDOM[0]);
+				// $elems.remove();
+				
+				// ///////////////////////
+				// Optimized code
+				// //////////////////////
+				for(var i=0;i<$elems.length;i++){
+					$elems[i].remove();
+				}
 			}
 
 		},
-		_refreshTemplate : function(renderCurrentDOM, renderChildComponentDOM) {
+		/**
+		 * Function to do Knockout bindngs on compiled
+		 * template.
+		 */
+		_koApplyBindings : function(data) {
 			var self = this;
-			renderCurrentDOM = renderCurrentDOM === false ? false : true;
-			renderChildComponentDOM = renderChildComponentDOM === false ? false : true;
-			self._cleanDOM();
-
-			// Redo template read, compile and render process
-			self._loadTemplate(self.template).always( function(renderCurrentDOM, renderChildComponentDOM, htmlString) {
-				var self = this;
-				self._templateProcess(htmlString);
-				if (!renderCurrentDOM)
-					return;
-
-				self._renderTemplate(htmlString);
-
-				if (!renderChildComponentDOM)
-					return;
-
-				// Refresh child templates
-				var childViewmodels = Object.keys(self._.childViewmodels);
-
-				// Render childs Template
-				childViewmodels.forEach( function(key, index) {
-					this[key]._refreshTemplate();
-				}.bind(self._.childViewmodels));
-
-			}.bind(self, renderCurrentDOM, renderChildComponentDOM));
+			$.each(self._.$elems, function(key, elem) {
+				ko.applyBindings(data, elem);
+			});
 		},
-		_koApplyBindings : function(data, node) {
-			var self = this;
-			node = node || self._.$domRef[0];
-			ko.applyBindingsToDescendants(data, node);
-		},
+		/**
+		 * Function to compile and create local reference for
+		 * DOM elements.
+		 */
 		_templateProcess : function(templateString) {
 			var self = this;
-			var doms = self._templateCompile(templateString);
-			self._.$domRef = $(doms);
-			self._trigger('templateReady');
+			var $elems = self._templateCompile(templateString);
+			self._.$elems = $elems;
 		},
+		/**
+		 * Function to trigger DOM render.
+		 */
 		_renderTemplate : function() {
 			var self = this;
-			self._trigger('beforeRenderTemplate');
-			self._renderDOMs('fadeIn', 500);
-			self._trigger('afterRenderTemplate');
+			self._renderDoms();
 		},
-		_initTemplate : function(htmlString) {
+		/**
+		 * Public interface function to render template.
+		 * It is used for manualy trigger rendering process
+		 * when "autoRender" is disabled.
+		 */
+		renderTemplate : function() {
 			var self = this;
-			self._templateProcess(htmlString);
-			if (self.autoRender)
-				self._renderTemplate(htmlString);
+			self._initTemplate();
 		},
+		cleanDoms : function() {
+			var self = this;
+			self._cleanDoms();
+		},
+		// VIEWMODEL EVENT HANDLING
+		/**
+		 * Function to trigger register Viewmodel and template
+		 * events
+		 */
 		_trigger : trigger,
-		// PUBLIC FUNCTIONS
+		/**
+		 * Function to add or hook callback functions with registered events.
+		 */
 		on : on,
+
+		// VIEWMODEL PUBLIC INTERFACE FUNCTIONS
+		/**
+		 * Function to read or get reference to Models which is associated
+		 * with current viewmodel.
+		 *
+		 * @param {String} modelName String to mention model name.
+		 * @return {Object} Reference to "Model" object.
+		 */
 		getModel : function(modelName) {
 			var self = this;
 			var model = self._.models[modelName]
@@ -577,6 +861,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			return model;
 		},
+		/**
+		 * Function to read or get reference to Stores which is associated
+		 * with current viewmodel.
+		 *
+		 * @param {String} storeName String to mention store name.
+		 * @return {Object} Reference to "Store" object.
+		 */
 		getStore : function(storeName) {
 			var self = this;
 			var store = self._.stores[storeName]
@@ -586,6 +877,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			return store;
 		},
+		/**
+		 * Function to read or get reference to composite sibiling viewmodels which is associated
+		 * with current viewmodel.
+		 *
+		 * @param {String} viewmodelName String to mention viewmodel name.
+		 * @return {Object} Reference to "Viewmodel" object.
+		 */
 		getComponent : function(viewmodelName) {
 			var self = this;
 			var viewmodel = self._.childViewmodels[viewmodelName]
@@ -631,7 +929,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	// DEFINE ROUTER/NAVIGATION MANAGER
 	var RouterPrototype = {
 		// PRIVATE FUNCTIONS
-		_setupEventListeners : function() {
+		_initEventListeners : function() {
 			var self = this;
 			self._.eventListeners = {
 				beforeRoute : [],
@@ -712,7 +1010,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		// CONSTRUCTOR
 		init : function(routes) {
 			var self = this;
-			self._setupEventListeners();
+			self._initEventListeners();
 			self._initRoutes(routes);
 		},
 		// PUBLIC FUNCTIONS
@@ -832,26 +1130,45 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	// DEFINE GLOBAL EVENT MANAGER OR PUBSUB MANAGER
 	var GlobalEventPrototype = {
 		// PRIVATE FUNCTIONS
-		_setupEventListeners : function() {
+		_initEventListeners : function() {
 			var self = this;
+			self._.eventNames = [];
 			self._.eventListeners = {
 			};
 		},
 		// CONSTRUCTOR
 		init : function() {
 			var self = this;
-			self._setupEventListeners();
+			self._initEventListeners();
 		},
 		// PUBLIC FUNCTIONS
 		registerEvent : function(eventNames) {
 			var self = this;
 			if (CoreApp.utils.isString(eventNames))
 				eventNames = eventNames.split(',')
+			self._.eventNames = eventNames;
 			eventNames.forEach(function(eventName) {
+				// Remove if any space prefix and suffix
+				eventName = eventName.trim();
 				if (!self._.eventListeners[eventName]) {
 					self._.eventListeners[eventName] = [];
 				} else {
 					CoreApp.Exception.throwIt('Event registration failed, because ' + eventName + ' event already exist');
+				}
+			});
+		},
+		removeHandlers : function(eventNames) {
+			var self = this;
+
+			if (!eventNames)
+				eventNames = self._.eventNames;
+
+			if (CoreApp.utils.isString(eventNames))
+				eventNames = eventNames.split(',');
+
+			eventNames.forEach(function(eventName) {
+				if (self._.eventListeners[eventName]) {
+					self._.eventListeners[eventName] = [];
 				}
 			});
 		},
@@ -882,7 +1199,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			if ($('#' + templateName).length) {
 				setTimeout(function() {
 					deferred.resolve($('#' + templateName).html());
-				}, 1);
+				}, 0);
 			} else {
 				$.ajax({
 					url : url,
