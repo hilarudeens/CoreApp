@@ -568,8 +568,15 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var self = this;
 			self._.parentRef = parentRef;
 
-			if (self._.parentRef && self.autoRender)
+			if (self._.parentRef && self.autoRender && self.template && self.targetElem) {
 				self._.parentRef.on('afterRenderTemplate', self._initTemplate, self);
+			} else {
+				// Whenever vm object getting initiated we have to make sure
+				// respective template availability. Following function call
+				// check local existance of template and if it is not local dom
+				// it will pull template.
+				self._loadTemplate();
+			}
 
 			self._initEventListeners();
 			self._initObj(parentRef);
@@ -586,12 +593,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			// respective template availability. Following function call
 			// check local existance of template and if it is not local dom
 			// it will pull template.
-			if (self.template && self.autoRender) {
-				self._initTemplate();
-			} else {
-				self._loadTemplate();
-			}
-			self._initChildViewmodels();
+			// if (self.template && self.autoRender) {
+			// 	self._initTemplate();
+			// } else {
+			// 	self._loadTemplate();
+			// }
+			self._trigger('beforeComponentInit');
+			self._initChildViewmodels();			
 			self._trigger('afterViewmodelInit');
 		},
 		/**
@@ -659,6 +667,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				modelReady : [],
 				storeReady : [],
 				templateReady : [],
+				beforeComponentInit: [],
 				beforeRenderTemplate : [],
 				afterRenderTemplate : [],
 				afterViewmodelInit : []
@@ -741,8 +750,6 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			}
 			if ($target.length) {
 				$target.find(self.targetElem).append(self._.$elems);
-				//$([$target,$target.parent()]).find(self.targetElem).append(self._.$elems);
-				//$target.find('*').addBack().filter(self.targetElem).append(self._.$elems);
 			}
 		},
 		/**
@@ -764,33 +771,35 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var $elems = self._.$elems;
 			var ref = null;
 
-
 			// Clean existing template content
 			if ($elems && $elems.length) {
 				// /////////////////////////////////////////////
-				// For performance tune following cleanup code, replace with 
+				// For performance tune following cleanup code, replace with
 				// native javascript remove() function
 				// /////////////////////////////////////////////
-				
+
 				// // Deattach all jQuery event binding
 				// $elems.off();
-				// 
+				//
 				// $.each($elems, function(elemIndex, node) {
 				// 	// Deattach knockout binding and remove node within target DOM
 				// 	ko.removeNode(node);
 				// });
-				// 
+				//
 				// // Deattach knockout binding at target DOM
 				// ko.cleanNode($elems[0]);
 
 				// $elems.remove();
-				
+
 				// ///////////////////////
 				// Optimized code
 				// //////////////////////
-				for(var i=0;i<$elems.length;i++){
-					$elems[i].remove();
+				for (var i = 0; i < $elems.length; i++) {
+					if ($elems[i].parentNode) {
+						$elems[i].parentNode.removeChild($elems[i]);
+					}
 				}
+
 			}
 
 		},
@@ -829,6 +838,9 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			var self = this;
 			self._initTemplate();
 		},
+		/**
+		 * Function to clean DOMs and attached event bidings. 
+		 */
 		cleanDoms : function() {
 			var self = this;
 			self._cleanDoms();
@@ -892,6 +904,20 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				return {};
 			}
 			return viewmodel;
+		},
+		/**
+		 * Function to read or get reference jQuery wrapped DOM elements which is associated
+		 * with current viewmodel.
+		 *
+		 * @return {Object} jQuery elements.
+		 */
+		getElems : function() {
+			var self = this;
+			var $elems = self._ && self._.$elems ? self._.$elems : $('');
+			if ($elems.length === 0) {
+				CoreApp.Exception.throwIt('Viewmodel doesn\'t contain DOM elements.');
+			}
+			return $elems;
 		}
 	};
 
@@ -1147,6 +1173,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			if (CoreApp.utils.isString(eventNames))
 				eventNames = eventNames.split(',')
 			self._.eventNames = eventNames;
+
 			eventNames.forEach(function(eventName) {
 				// Remove if any space prefix and suffix
 				eventName = eventName.trim();
