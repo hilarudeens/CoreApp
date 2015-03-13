@@ -15,17 +15,29 @@
  * M-S-V-M-R
  *
  */
-var CoreApp = window.CoreApp || (function() {"use strict";
+var CoreApp = window.CoreApp || (function(factory) {
+	if ( typeof define === 'function' && define.amd) {
+		define(['knockout'], factory);
+	} else if (window.ko) {
+		// Non-module case - attach to the global instance
+		return factory(window.ko);
+	}
+})(function(ko) {"use strict";
 
-	if (!window.jQuery || !window.ko) {
-		throw new Error('Dependency error, Knockout and jQuery doesn\'t exist');
+	if (!window.jQuery) {
+		throw new Error('Dependency error, jQuery doesn\'t exist');
+	}
+
+	if (!ko && !window.ko) {
+		throw new Error('Dependency error, Knockout doesn\'t exist');
 	}
 
 	var CoreApp = {};
 
 	// SETUP CONFIGURATION
 	CoreApp.config = {
-		basePath : '/',
+		rootPath : '/',
+		appPath : '/',
 		DEBUG : true
 	};
 
@@ -599,7 +611,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			// 	self._loadTemplate();
 			// }
 			self._trigger('beforeComponentInit');
-			self._initChildViewmodels();			
+			self._initChildViewmodels();
 			self._trigger('afterViewmodelInit');
 		},
 		/**
@@ -667,7 +679,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				modelReady : [],
 				storeReady : [],
 				templateReady : [],
-				beforeComponentInit: [],
+				beforeComponentInit : [],
 				beforeRenderTemplate : [],
 				afterRenderTemplate : [],
 				afterViewmodelInit : []
@@ -839,7 +851,7 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 			self._initTemplate();
 		},
 		/**
-		 * Function to clean DOMs and attached event bidings. 
+		 * Function to clean DOMs and attached event bidings.
 		 */
 		cleanDoms : function() {
 			var self = this;
@@ -1002,11 +1014,6 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				cb : cb,
 			}
 		},
-		_createRoutes : function(route, key) {
-			var self = this;
-			key = key || ('route' + Math.random().toString().split('.')[1]);
-			self._createRoute(key, route.hash, route.cb, route.name, route.parent, route.root);
-		},
 		// INITIALIZE ROUTER
 		_initRoutes : function(routes) {
 			var self = this;
@@ -1016,14 +1023,13 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 				self._createRoutes(routes[name], name)
 			}
 		},
-		// _trigger: function(eventName){
-		// var args = Array.prototype.slice.call(arguments,1);
-		// var self = this;
-		// var eventListener = self._.eventListeners[eventName];
-		// eventListener.forEach(function(listener){
-		// listener.callback.call()
-		// })
-		// },
+		// CONSTRUCTOR
+		init : function(routes) {
+			var self = this;
+			self._initEventListeners();
+			self._initRoutes(routes);
+		},
+		// PUBLIC FUNCTIONS
 		beforeRoute : function() {
 			return true;
 		},
@@ -1033,14 +1039,11 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		completeRoute : function() {
 
 		},
-		// CONSTRUCTOR
-		init : function(routes) {
+		createRoutes : function(route, key) {
 			var self = this;
-			self._initEventListeners();
-			self._initRoutes(routes);
+			key = key || ('route' + Math.random().toString().split('.')[1]);
+			self._createRoute(key, route.hash, route.cb, route.name, route.parent, route.root);
 		},
-		// PUBLIC FUNCTIONS
-		// on: on,
 		getHierarchy : function(hash) {
 			var leafToRoot = []
 			var self = this;
@@ -1209,18 +1212,19 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 		config : {
 			pathPrefix : 'templates/',
 			extension : 'html',
-			namePrefix : ''
+			namePrefix : '',
+			rootPath:'/'
 		},
 		load : function(template) {
 			var self = this;
 			var config = self.config;
 			var deferred = $.Deferred();
 			var templateName = template;
-			var basePath = config.basePath;
+			var rootPath = config.rootPath;
 			var pathPrefix = config.pathPrefix || '/';
 			var namePrefix = config.namePrefix;
 			var extension = '.' + (config.extension || 'html');
-			var url = basePath + pathPrefix + namePrefix + templateName + extension;
+			var url = rootPath + pathPrefix + namePrefix + templateName + extension;
 
 			// Check catched and read from dump
 			if ($('#' + templateName).length) {
@@ -1354,7 +1358,8 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	};
 	CoreApp.moduleToFile = CoreApp.mtof = function(modules) {
 		var files = [];
-		var ensure = []
+		var ensure = [];
+		var appPath = CoreApp.config.appPath;
 
 		var ensureModule = function(modulestring) {
 			var base = window;
@@ -1410,4 +1415,4 @@ var CoreApp = window.CoreApp || (function() {"use strict";
 	};
 
 	return CoreApp;
-})();
+});
