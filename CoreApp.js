@@ -568,7 +568,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 		template : '',
 		modelConfig : {},
 		storeConfig : {},
-		childViewmodelConfig : {},
+		componentConfig : {},
 
 		// VIEWMODEL INITIALIZATIONS
 		/**
@@ -611,7 +611,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 			// 	self._loadTemplate();
 			// }
 			self._trigger('beforeComponentInit');
-			self._initChildViewmodels();
+			self._initComponents();
 			self._trigger('afterViewmodelInit');
 		},
 		/**
@@ -655,18 +655,18 @@ var CoreApp = window.CoreApp || (function(factory) {
 		/**
 		 * Function initialize composite leaf/siblings viewmodels.
 		 */
-		_initChildViewmodels : function() {
+		_initComponents : function() {
 			var self = this;
-			var childVmConfig = self.childViewmodelConfig;
-			var childViewmodels = {};
+			var childVmConfig = self.componentConfig;
+			var components = {};
 			var TempClass = null;
 
 			for (var childVmAlias in childVmConfig) {
 				TempClass = CoreApp.evaluate(childVmConfig[childVmAlias]);
-				childViewmodels[childVmAlias] = new TempClass(self);
+				components[childVmAlias] = new TempClass(self);
 			}
 
-			self._.childViewmodels = childViewmodels;
+			self._.components = components;
 		},
 
 		/**
@@ -910,7 +910,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 		 */
 		getComponent : function(viewmodelName) {
 			var self = this;
-			var viewmodel = self._.childViewmodels[viewmodelName]
+			var viewmodel = self._.components[viewmodelName]
 			if (!viewmodel) {
 				CoreApp.Exception.throwIt(viewmodelName + ' child component viewmodel doesn\'t exist in current ViewModel');
 				return {};
@@ -997,7 +997,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 			};
 		},
 		_getParent : function(routeRef) {
-
+			// Reserved function
 		},
 		_createRoute : function(key, hash, cb, name, parentKey, rootKey) {
 			var self = this;
@@ -1037,7 +1037,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 			return true;
 		},
 		completeRoute : function() {
-
+			// Reserved function
 		},
 		createRoutes : function(route, key) {
 			var self = this;
@@ -1081,10 +1081,10 @@ var CoreApp = window.CoreApp || (function(factory) {
 				return false
 		},
 		getRoute : function() {
-
+			// Reserved function
 		},
 		getAllRoutes : function() {
-
+			// Reserved function
 		},
 		reload : function(reloadHash) {
 			var self = this;
@@ -1099,7 +1099,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 			var routeMap = self._.routeMap[routeRef.ref];
 
 			if (self.beforeRoute(hash, routeMap) !== false && location.hash.replace('#', '') === hash && !!routeMap.cb) {
-				routeMap.cb.call(routeRef.params);
+				routeMap.cb.call(this, routeRef.params);
 				self.afterRoute(hash, routeMap);
 			}
 
@@ -1213,7 +1213,7 @@ var CoreApp = window.CoreApp || (function(factory) {
 			pathPrefix : 'templates/',
 			extension : 'html',
 			namePrefix : '',
-			rootPath:'/'
+			rootPath : '/'
 		},
 		load : function(template) {
 			var self = this;
